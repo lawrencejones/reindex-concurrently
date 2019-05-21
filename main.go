@@ -23,7 +23,7 @@ var (
 	port               = app.Flag("port", "PostgreSQL database port").Default("5432").Uint16()
 	dbname             = app.Flag("dbname", "PostgreSQL root database").Required().String()
 	user               = app.Flag("user", "PostgreSQL user").Default("postgres").String()
-	lockTimeout        = app.Flag("lock-timeout", "timeout for acquiring access exclusive lock").Default("250ms").String()
+	lockTimeout        = app.Flag("lock-timeout", "timeout for acquiring access exclusive lock").Default("3s").String()
 	maintenanceWorkMem = app.Flag("maintenance-work-mem", "session maintenance work mem").Default("1GB").String()
 )
 
@@ -58,12 +58,6 @@ func main() {
 		cancel()
 	}()
 
-	logger.Log("msg", "setting lock timeout", "lock_timeout", *lockTimeout)
-	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set lock_timeout = '%s';`, *lockTimeout), nil)
-	if err != nil {
-		panic(err)
-	}
-
 	logger.Log("msg", "setting maintenance work mem", "maintenance_work_mem", *maintenanceWorkMem)
 	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set maintenance_work_mem = '%s';`, *maintenanceWorkMem), nil)
 	if err != nil {
@@ -89,6 +83,12 @@ func main() {
 
 	logger.Log("msg", "dropping old index", "index", *index)
 	_, err = conn.ExecEx(ctx, fmt.Sprintf(`drop index concurrently %s;`, *index), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Log("msg", "setting lock timeout", "lock_timeout", *lockTimeout)
+	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set lock_timeout = '%s';`, *lockTimeout), nil)
 	if err != nil {
 		panic(err)
 	}
