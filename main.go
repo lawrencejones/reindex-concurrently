@@ -71,6 +71,11 @@ func main() {
 
 	workingIndex := fmt.Sprintf("%s_working", *index)
 	workingIndexDef := strings.Replace(indexDef, *index, workingIndex, 1)
+	workingIndexDef = strings.Replace(workingIndexDef, `INDEX`, `INDEX CONCURRENTLY`, 1)
+
+	if !strings.Contains(workingIndexDef, `CONCURRENTLY`) {
+		kingpin.Fatalf("could not construct a concurrent index definition: %s", workingIndexDef)
+	}
 
 	start := time.Now()
 	logger.Log("msg", "creating new index", "index", workingIndex, "definition", workingIndexDef)
