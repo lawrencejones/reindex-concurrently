@@ -17,14 +17,17 @@ import (
 var logger kitlog.Logger
 
 var (
-	app                = kingpin.New("reindex-concurrently", "").Version("0.0.1")
-	index              = app.Arg("index", "name of index").Required().String()
-	host               = app.Flag("host", "PostgreSQL database host").Default("/var/run/postgresql").String()
-	port               = app.Flag("port", "PostgreSQL database port").Default("5432").Uint16()
-	dbname             = app.Flag("dbname", "PostgreSQL root database").Required().String()
-	user               = app.Flag("user", "PostgreSQL user").Default("postgres").String()
-	lockTimeout        = app.Flag("lock-timeout", "timeout for acquiring access exclusive lock").Default("3s").String()
-	maintenanceWorkMem = app.Flag("maintenance-work-mem", "session maintenance work mem").Default("1GB").String()
+	app                           = kingpin.New("reindex-concurrently", "").Version("0.0.1")
+	index                         = app.Arg("index", "name of index").Required().String()
+	host                          = app.Flag("host", "PostgreSQL database host").Default("/var/run/postgresql").String()
+	port                          = app.Flag("port", "PostgreSQL database port").Default("5432").Uint16()
+	dbname                        = app.Flag("dbname", "PostgreSQL root database").Required().String()
+	user                          = app.Flag("user", "PostgreSQL user").Default("postgres").String()
+	synchronousCommit             = app.Flag("synchronous-commit", "synchronous_commit setting for index build").Default("on").String()
+	temporaryFileLimit            = app.Flag("temporary-file-limit", "limit on temporary files").Default("100GB").String()
+	maxParallelMaintenanceWorkers = app.Flag("max-parallel-maintenance-workers", "number of parallel index workers").Default("2").String()
+	lockTimeout                   = app.Flag("lock-timeout", "timeout for acquiring access exclusive lock").Default("3s").String()
+	maintenanceWorkMem            = app.Flag("maintenance-work-mem", "session maintenance work mem").Default("1GB").String()
 )
 
 func main() {
@@ -60,6 +63,24 @@ func main() {
 
 	logger.Log("msg", "setting maintenance work mem", "maintenance_work_mem", *maintenanceWorkMem)
 	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set maintenance_work_mem = '%s';`, *maintenanceWorkMem), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Log("msg", "setting temporary file limit", "temp_file_limit", *temporaryFileLimit)
+	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set temp_file_limit = '%s';`, *temporaryFileLimit), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Log("msg", "setting synchronous commit", "synchronous_commit", *synchronousCommit)
+	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set synchronous_commit = '%s';`, *synchronousCommit), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Log("msg", "setting max parallel maintenance workers", "max_parallel_maintenance_workers", *maxParallelMaintenanceWorkers)
+	_, err = conn.ExecEx(ctx, fmt.Sprintf(`set max_parallel_maintenance_workers = '%s';`, *maxParallelMaintenanceWorkers), nil)
 	if err != nil {
 		panic(err)
 	}
