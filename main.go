@@ -24,6 +24,8 @@ var (
 	port                          = app.Flag("port", "PostgreSQL database port").Default("5432").Uint16()
 	dbname                        = app.Flag("dbname", "PostgreSQL root database").Required().String()
 	user                          = app.Flag("user", "PostgreSQL user").Default("postgres").String()
+	renameIndexRetries            = app.Flag("rename-index-retries", "Number of times to try renaming index").Default("10").Int()
+	renameIndexRetryInterval      = app.Flag("rename-index-retry-interval", "Time between rename index retries").Default("30s").Duration()
 	synchronousCommit             = app.Flag("synchronous-commit", "synchronous_commit setting for index build").Default("on").String()
 	temporaryFileLimit            = app.Flag("temporary-file-limit", "limit on temporary files").Default("100GB").String()
 	maxParallelMaintenanceWorkers = app.Flag("max-parallel-maintenance-workers", "number of parallel index workers").Default("4").String()
@@ -229,16 +231,34 @@ func main() {
 
 		// ALTER INDEX is actually an ALTER TABLE and takes AccessExclusive locks. Apply timeout
 		// to prevent sadness!
-		func() {
-			mustSet(ctx, conn, "lock_timeout", *lockTimeout)
-			defer mustSet(ctx, conn, "lock_timeout", "")
+	renameIndex:
+		for remainingAttempts := *renameIndexRetries; remainingAttempts > 0; remainingAttempts-- {
+			err := func() error {
+				mustSet(ctx, conn, "lock_timeout", *lockTimeout)
+				defer mustSet(ctx, conn, "lock_timeout", "")
 
-			logger.Log("msg", "rename new index to old", "from", workingIndex, "to", idx.name)
-			_, err = conn.ExecEx(ctx, fmt.Sprintf(`alter index %s rename to %s;`, workingIndex, idx.name), nil)
-			if err != nil {
+				logger.Log("msg", "rename new index to old", "from", workingIndex, "to", idx.name)
+				_, err = conn.ExecEx(ctx, fmt.Sprintf(`alter index %s rename to %s;`, workingIndex, idx.name), nil)
+
+				return err
+			}()
+
+			if err == nil {
+				break renameIndex
+			}
+
+			if remainingAttempts == 1 {
 				panic(err)
 			}
-		}()
+
+			logger.Log("error", err, "msg", "failed to drop index, retrying after pause", "remainingAttempts", remainingAttempts)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(*renameIndexRetryInterval):
+				// continue
+			}
+		}
 	}
 
 	newIdx, err := getIndex(ctx, conn, idx.name)
