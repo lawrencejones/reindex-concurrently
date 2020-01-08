@@ -1,4 +1,4 @@
-module github.com/lawrencejones/rebuild-index-concurrently
+module github.com/lawrencejones/reindex-concurrently
 
 go 1.12
 
